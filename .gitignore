@@ -170,3 +170,12 @@ dist
 
 .dev.vars
 .wrangler/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Project-specific cache directories
+.claude/data/sessions/
+.serena/cache/

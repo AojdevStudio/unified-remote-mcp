@@ -1,0 +1,6 @@
+{
+  "session_id": "183e081d-c035-429b-b15a-f41e0b75db15",
+  "prompts": [
+    "hello claude you are going to need to catch up to this codebase, here's the TLDR, i created a repo prematurely where we planned out how to build a cloudflare remote mcp server, but actually what i should have down is to download the cloudflare template first and then within that we start planning. so i worked backwards and that is fine. I NEED YOU TO ACKOWLEDGE YOU UNDERSTAND. because i ported over all our planning docs, history, logs, and also "
+  ]
+}

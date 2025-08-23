@@ -1,0 +1,6 @@
+{
+  "session_id": "3c932145-c61f-4b37-859a-884da153c8d1",
+  "prompts": [
+    "hello claude you are going to need to catch up to this codebase, here's the TLDR, i created a repo prematurely where we planned out how to build a cloudflare remote mcp server, but actually what i should have down is to download the cloudflare template first and then within that we start planning. so i worked backwards and that is fine. I NEED YOU TO ACKOWLEDGE YOU UNDERSTAND. because i ported over all our planning docs, history, logs, and also the serena files as well. so you will have to explore and catch up. new things you will notice is the boiler-plate code and biome.json as our linter. this is an exploratory task.. please come back with full understanding. now off you go!  "
+  ]
+}

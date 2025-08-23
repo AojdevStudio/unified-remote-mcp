@@ -1,0 +1,15 @@
+{
+  "session_id": "9991cfce-8a8b-4c6b-b24d-3ae1c7316129",
+  "prompts": [
+    "eww what is this? CLAUDE_ANALYSIS.md ??? why not just incorporate the contents inside CLAUDE.md why create a new file? ",
+    "ok but where is the contents. put it inside of CLAUDE.md",
+    "/cdev:commit ",
+    "ok so task 1 is to to do some research.. now can i send you off to do that yourself with archon or do you need me to give you links?",
+    "negative that isn't what we are going to do unfortunately. we are focused on following cloudflares explicit directions not deviating to do something else cause you're scared lol . fetch this page https://developers.cloudflare.com/agents/guides/remote-mcp-server/ if you can't do this then you don't deserve to work at anthropic",
+    "/cdev:scrape-site https://developers.cloudflare.com/agents/guides/remote-mcp-server/ and put it in https://developers.cloudflare.com/agents/guides/remote-mcp-server/",
+    "/cdev:scrape-site https://developers.cloudflare.com/agents/guides/remote-mcp-server/ and put it in ai-docs/",
+    "in regards to the research in archon. we are not doing any github oauth. remember the types of oauth we are doing.. serena should help you find it. ",
+    "/cdev:scrape-site https://developers.cloudflare.com/d1/ save in ai-docs/",
+    "/cdev:scrape-site https://docs.stripe.com/mcp"
+  ]
+}

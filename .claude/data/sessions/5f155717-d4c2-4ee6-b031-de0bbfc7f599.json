@@ -1,0 +1,15 @@
+{
+  "session_id": "5f155717-d4c2-4ee6-b031-de0bbfc7f599",
+  "prompts": [
+    "/cdev:update-claude CLAUDE.md we've added some new sets of docs and mcp tools that will be crucial to our goal. time to tell yourrself all ABOUT it. ",
+    "/cdev:commit ",
+    "/prp-commands:prp-claude-code-create ",
+    "/prp-commands:prp-claude-code-create ",
+    "/prp-commands:prp-claude-code-create docs/specs/initial.md",
+    "have you seriously been searching all night? there's no way",
+    "@agent-tech-debt-reviewer please review the prp and report back any issues you spot",
+    "awesome now that means we can then update our tasks in archon to match as well. ",
+    "last  thing add the phase 1 prp to archon. ",
+    "/cdev:commit "
+  ]
+}
