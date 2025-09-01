@@ -196,6 +196,8 @@ The project now has access to several specialized MCP servers for development:
 
 ## Core Archon Workflow Principles
 
+**CRITICAL: PROJECT-ID: 0afc542c-bffc-4dbd-ac69-931d84782a6a** DO NOT CREATE ANY NEW PROJECTS. ONLY USE THIS PROJECT.
+
 ### The Golden Rule: Task-Driven Development with Archon
 
 **MANDATORY: Always complete the full Archon specific task cycle before any coding:**

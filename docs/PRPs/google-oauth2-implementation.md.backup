@@ -1,0 +1,477 @@
+name: "Google OAuth2 Implementation for UnifiedMCP - Layer 2 Authentication"
+description: |
+
+## Purpose
+Implement Google OAuth2 authentication flow (Layer 2 of the three-layer architecture) to enable users to securely grant UnifiedMCP access to their Google Drive, replacing the current development token approach with production-ready OAuth2 flow using Cloudflare Workers, KV storage, and proper token management.
+
+## Core Principles
+1. **Security First**: PKCE flow, state validation, token encryption
+2. **User Experience**: Seamless auth flow with automatic token refresh
+3. **Production Ready**: Error handling, logging, monitoring
+4. **Pattern Consistency**: Follow existing codebase patterns
+5. **Global rules**: Follow all rules in CLAUDE.md
+
+---
+
+## Goal
+Replace the current `DevelopmentTokenManager` with a complete OAuth2 flow that enables each user to authenticate their Google account, granting UnifiedMCP access to their Google Drive with automatic token refresh and secure storage in Cloudflare KV.
+
+## Why
+- **Security**: Development tokens are insecure and expire quickly without refresh capability
+- **Multi-user Support**: Each user needs their own authenticated Google Drive access
+- **Production Requirement**: OAuth2 is required for production Google API access
+- **Three-Layer Architecture**: This implements Layer 2 (Google OAuth) of the planned auth stack
+
+## What
+User-visible OAuth2 flow where users authenticate with Google, grant Drive permissions, and UnifiedMCP securely stores and manages their tokens for API access.
+
+### Success Criteria
+- [ ] User can authenticate with Google via OAuth2 consent screen
+- [ ] Refresh tokens are obtained and stored securely in Cloudflare KV
+- [ ] Access tokens automatically refresh before expiration
+- [ ] All 6 Google Drive tools work with OAuth2 tokens
+- [ ] Error states handled gracefully with user-friendly messages
+- [ ] Session persistence across MCP reconnections
+
+## All Needed Context
+
+### Documentation & References
+```yaml
+# MUST READ - Include these in your context window
+- url: https://developers.google.com/identity/protocols/oauth2/web-server
+  section: "#obtaining-oauth-2.0-access-tokens"
+  why: Official Google OAuth2 server flow documentation
+  
+- url: https://developers.google.com/identity/protocols/oauth2/web-server
+  section: "#offline"
+  critical: Must use access_type=offline to get refresh_token
+  
+- url: https://oauth2.googleapis.com/.well-known/openid-configuration
+  why: Google OAuth2 discovery document with all endpoints
+  
+- file: /Users/ossieirondi/Projects/unified-dental/unified-remote-mcp/src/index.ts
+  lines: 16-70
+  why: Current DevelopmentTokenManager pattern to replace
+  
+- file: /Users/ossieirondi/Projects/unified-dental/unified-remote-mcp/src/index.ts
+  lines: 83-99
+  why: makeRequest pattern for API calls with Bearer token
+  
+- file: /Users/ossieirondi/Projects/unified-dental/unified-remote-mcp/ai-docs/cloudflare-remote-mcp-server-guide.md
+  lines: 126-139
+  why: Cloudflare OAuth Provider pattern to follow
+  
+- docfile: /Users/ossieirondi/Projects/unified-dental/unified-remote-mcp/docs/PRPs/ai_docs/google-oauth2-implementation-guide.md
+  why: Comprehensive OAuth2 implementation patterns, gotchas, and code examples
+  critical: Contains PKCE implementation, token storage patterns, error handling
+
+- file: /Users/ossieirondi/Projects/unified-dental/unified-remote-mcp/worker-configuration.d.ts
+  why: Environment interface to extend with OAuth variables
+  
+- file: /Users/ossieirondi/Projects/unified-dental/unified-remote-mcp/wrangler.jsonc
+  why: Configuration for KV namespaces and environment bindings
+```
+
+### Current Codebase Tree
+```bash
+.
+├── src
+│   └── index.ts                 # Main server file with DevelopmentTokenManager
+├── worker-configuration.d.ts    # Env interface definition
+├── wrangler.jsonc               # Cloudflare configuration
+├── package.json                 # Dependencies
+├── .dev.vars                    # Local environment variables
+└── docs
+    └── PRPs
+        └── ai_docs
+            └── google-oauth2-implementation-guide.md  # OAuth patterns
+```
+
+### Desired Codebase Tree with New Files
+```bash
+.
+├── src
+│   ├── index.ts                 # Modified: GoogleOAuthHandler replaces DevelopmentTokenManager
+│   └── auth
+│       ├── google-oauth.ts      # NEW: Google OAuth2 handler class
+│       ├── token-manager.ts     # NEW: Token storage and refresh logic
+│       └── pkce.ts             # NEW: PKCE utilities
+├── worker-configuration.d.ts    # Modified: Add OAuth env variables
+├── wrangler.jsonc               # Modified: Add KV namespace bindings
+└── .dev.vars.example            # Modified: Add OAuth configuration examples
+```
+
+### Known Gotchas & Library Quirks
+```typescript
+// CRITICAL: refresh_token only returned on first authorization
+// Must include: access_type=offline AND prompt=consent
+
+// CRITICAL: Cloudflare Workers env variables not available at module scope
+// ❌ WRONG: const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+// ✅ RIGHT: Access inside handler: env.GOOGLE_CLIENT_ID
+
+// CRITICAL: Google tokens always start with 'ya29.'
+// Validate format: token.startsWith('ya29.')
+
+// CRITICAL: Redirect URI must match EXACTLY (even trailing slashes matter)
+// Store exact URI: https://your-worker.workers.dev/oauth/callback
+
+// CRITICAL: KV operations are async and may have slight delays
+// Always await KV operations and handle potential null values
+
+// CRITICAL: PKCE code_verifier must be 43-128 characters
+// Use: crypto.randomUUID() + crypto.randomUUID() for 72 chars
+```
+
+## Implementation Blueprint
+
+### Data Models and Structure
+
+```typescript
+// src/auth/types.ts
+interface OAuthTokens {
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;     // Unix timestamp
+  scope: string;
+  token_type: 'Bearer';
+}
+
+interface OAuthSession {
+  sessionId: string;
+  tokens: OAuthTokens;
+  userEmail?: string;
+  createdAt: number;
+  lastUsed: number;
+}
+
+interface PKCEParameters {
+  verifier: string;
+  challenge: string;
+  method: 'S256';
+}
+
+// Extend existing Env interface
+interface Env {
+  // Existing
+  GOOGLE_DEV_TOKEN: string;
+  GOOGLE_DEV_TOKEN_EXPIRES_AT: string;
+  NODE_ENV: string;
+  MCP_OBJECT: DurableObjectNamespace<MyMCP>;
+  
+  // New OAuth additions
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+  GOOGLE_REDIRECT_URI: string;
+  
+  // KV Namespaces
+  USER_TOKENS: KVNamespace;      // Token storage
+  OAUTH_STATES: KVNamespace;     // CSRF state storage
+}
+```
+
+### Implementation Tasks (Ordered by Dependencies)
+
+```yaml
+Task 1 - Update Environment Configuration:
+  MODIFY wrangler.jsonc:
+    - ADD KV namespace bindings for USER_TOKENS and OAUTH_STATES
+    - Pattern: Follow existing kv_namespaces array structure
+    
+  MODIFY worker-configuration.d.ts:
+    - ADD OAuth environment variables to Env interface
+    - ADD KV namespace types: USER_TOKENS, OAUTH_STATES
+    
+  MODIFY .dev.vars.example:
+    - ADD GOOGLE_CLIENT_ID example
+    - ADD GOOGLE_CLIENT_SECRET example
+    - ADD GOOGLE_REDIRECT_URI example
+
+Task 2 - Create PKCE Utilities:
+  CREATE src/auth/pkce.ts:
+    - IMPLEMENT generatePKCE() function
+    - PATTERN: Use crypto.subtle.digest for SHA-256
+    - RETURN: { verifier, challenge, method: 'S256' }
+
+Task 3 - Create Token Manager:
+  CREATE src/auth/token-manager.ts:
+    - IMPLEMENT TokenManager class
+    - METHODS: storeTokens, getValidToken, refreshToken
+    - PATTERN: Follow existing singleton pattern from DevelopmentTokenManager
+    - USE: Cloudflare KV for storage with TTL
+
+Task 4 - Create Google OAuth Handler:
+  CREATE src/auth/google-oauth.ts:
+    - IMPLEMENT GoogleOAuthHandler class
+    - METHODS: getAuthUrl, handleCallback, exchangeCode
+    - PATTERN: Follow OAuthProvider pattern from ai-docs
+    - INCLUDE: State validation, PKCE support, error handling
+
+Task 5 - Integrate OAuth into Main Server:
+  MODIFY src/index.ts:
+    - REPLACE DevelopmentTokenManager with GoogleOAuthHandler
+    - ADD OAuth routes: /oauth/authorize, /oauth/callback
+    - MODIFY GoogleDriveAPI to use TokenManager
+    - PRESERVE: All existing tool implementations
+
+Task 6 - Update API Request Pattern:
+  MODIFY src/index.ts GoogleDriveAPI class:
+    - CHANGE getTokenManager() to use new TokenManager
+    - UPDATE makeRequest() to handle token refresh
+    - ADD error handling for expired tokens
+
+Task 7 - Add OAuth Status Tool:
+  MODIFY src/index.ts MyMCP class:
+    - ADD tool: oauth_status to check auth state
+    - ADD tool: oauth_connect to initiate flow
+    - PATTERN: Follow existing tool registration pattern
+```
+
+### Per Task Implementation Details
+
+```typescript
+// Task 2 - PKCE Implementation
+// src/auth/pkce.ts
+export async function generatePKCE(): Promise<PKCEParameters> {
+  // Generate 72-char verifier (2 UUIDs)
+  const verifier = crypto.randomUUID() + crypto.randomUUID();
+  
+  // Create SHA-256 hash
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  
+  // Base64-url encode without padding
+  const challenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+  
+  return { verifier, challenge, method: 'S256' };
+}
+
+// Task 3 - Token Manager Core Logic
+// src/auth/token-manager.ts
+export class TokenManager {
+  constructor(private env: Env) {}
+  
+  async getValidToken(sessionId: string): Promise<string> {
+    // PATTERN: Check KV for stored tokens
+    const stored = await this.env.USER_TOKENS.get(`session:${sessionId}`);
+    if (!stored) throw new Error('Not authenticated');
+    
+    const tokens: OAuthTokens = JSON.parse(stored);
+    
+    // CRITICAL: Check expiration with 5-minute buffer
+    if (Date.now() > (tokens.expires_at - 300000)) {
+      // Refresh logic here
+      const newTokens = await this.refreshAccessToken(tokens.refresh_token);
+      await this.storeTokens(sessionId, newTokens);
+      return newTokens.access_token;
+    }
+    
+    return tokens.access_token;
+  }
+  
+  private async refreshAccessToken(refreshToken: string): Promise<OAuthTokens> {
+    // PATTERN: POST to Google token endpoint
+    const response = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        refresh_token: refreshToken,
+        client_id: this.env.GOOGLE_CLIENT_ID,
+        client_secret: this.env.GOOGLE_CLIENT_SECRET,
+        grant_type: 'refresh_token'
+      })
+    });
+    
+    // PATTERN: Handle errors following existing pattern
+    if (!response.ok) {
+      throw new Error(`Token refresh failed: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return {
+      ...data,
+      refresh_token: refreshToken, // Keep original
+      expires_at: Date.now() + (data.expires_in * 1000)
+    };
+  }
+}
+
+// Task 4 - OAuth Handler Structure
+// src/auth/google-oauth.ts
+export class GoogleOAuthHandler {
+  private tokenManager: TokenManager;
+  
+  constructor(private env: Env) {
+    this.tokenManager = new TokenManager(env);
+  }
+  
+  async getAuthUrl(sessionId: string): Promise<string> {
+    // Generate CSRF state
+    const state = crypto.randomUUID();
+    await this.env.OAUTH_STATES.put(state, sessionId, {
+      expirationTtl: 600 // 10 minutes
+    });
+    
+    // Generate PKCE
+    const { verifier, challenge } = await generatePKCE();
+    await this.env.OAUTH_STATES.put(`pkce:${sessionId}`, verifier, {
+      expirationTtl: 600
+    });
+    
+    // Build auth URL
+    const params = new URLSearchParams({
+      client_id: this.env.GOOGLE_CLIENT_ID,
+      redirect_uri: this.env.GOOGLE_REDIRECT_URI,
+      response_type: 'code',
+      scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly',
+      access_type: 'offline',  // CRITICAL for refresh_token
+      prompt: 'consent',        // CRITICAL for refresh_token
+      state,
+      code_challenge: challenge,
+      code_challenge_method: 'S256'
+    });
+    
+    return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+  }
+}
+
+// Task 5 - Main Server Integration
+// Modify src/index.ts fetch handler
+if (url.pathname === '/oauth/authorize') {
+  const sessionId = request.headers.get('Mcp-Session-Id') || crypto.randomUUID();
+  const authUrl = await oauthHandler.getAuthUrl(sessionId);
+  return new Response(JSON.stringify({ authUrl }), {
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
+if (url.pathname === '/oauth/callback') {
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  const error = url.searchParams.get('error');
+  
+  if (error) {
+    return new Response(`OAuth error: ${error}`, { status: 400 });
+  }
+  
+  // Validate state and exchange code
+  const sessionId = await validateState(state, env);
+  const tokens = await oauthHandler.exchangeCode(code, sessionId);
+  await tokenManager.storeTokens(sessionId, tokens);
+  
+  return new Response('Authentication successful! You can close this window.');
+}
+```
+
+### Integration Points
+```yaml
+ROUTES:
+  - ADD to: src/index.ts fetch handler
+  - /oauth/authorize - Initiates OAuth flow
+  - /oauth/callback - Handles Google redirect
+  
+KV_NAMESPACES:
+  - ADD to: wrangler.jsonc
+  - binding: USER_TOKENS
+  - binding: OAUTH_STATES
+  
+ENVIRONMENT:
+  - ADD to: .dev.vars
+  - GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+  - GOOGLE_CLIENT_SECRET=GOCSPX-your-secret
+  - GOOGLE_REDIRECT_URI=http://localhost:8787/oauth/callback
+  
+MCP_TOOLS:
+  - MODIFY: All Google Drive tools to use TokenManager
+  - Pattern: Replace this.getTokenManager().getToken() with tokenManager.getValidToken(sessionId)
+```
+
+## Validation Loop
+
+### Level 1: TypeScript & Syntax
+```bash
+# Check TypeScript compilation
+npm run build
+
+# Expected: No TypeScript errors
+# If errors: Check type definitions and imports
+```
+
+### Level 2: OAuth Flow Test
+```bash
+# Start local server
+npm run dev
+
+# Test auth URL generation
+curl http://localhost:8787/oauth/authorize \
+  -H "Mcp-Session-Id: test-session-123"
+
+# Expected: JSON with authUrl starting with https://accounts.google.com
+# If error: Check environment variables in .dev.vars
+```
+
+### Level 3: Token Exchange Test
+```bash
+# Use ngrok for local OAuth testing
+ngrok http 8787
+
+# Update Google Console redirect URI to ngrok URL
+# Complete OAuth flow in browser
+# Check KV for stored tokens
+
+npx wrangler kv:key get --binding=USER_TOKENS "session:test-session-123"
+
+# Expected: JSON with access_token and refresh_token
+```
+
+### Level 4: Integration Test
+```bash
+# Test with MCP Inspector
+mcp-inspector
+
+# Connect to http://localhost:8787/sse
+# Check oauth_status tool
+# Complete auth flow
+# Test gdrive_search_and_read tool
+
+# Expected: Tool works with OAuth tokens
+```
+
+## Final Validation Checklist
+- [ ] TypeScript compiles without errors: `npm run build`
+- [ ] OAuth flow generates valid auth URL
+- [ ] Callback successfully exchanges code for tokens
+- [ ] Tokens stored in KV with proper TTL
+- [ ] Refresh token obtained (check for refresh_token in response)
+- [ ] Access token auto-refreshes when expired
+- [ ] All 6 Google Drive tools work with OAuth tokens
+- [ ] Error states return user-friendly messages
+- [ ] CSRF state validation works
+- [ ] PKCE flow implemented correctly
+
+---
+
+## Anti-Patterns to Avoid
+- ❌ Don't store tokens in plain text - use KV with TTL
+- ❌ Don't forget access_type=offline for refresh_token
+- ❌ Don't access env variables at module scope
+- ❌ Don't skip state parameter validation
+- ❌ Don't ignore token expiration
+- ❌ Don't expose client_secret in client code
+- ❌ Don't modify existing tool logic - only token source
+
+## Implementation Confidence Score: 9/10
+
+The PRP provides comprehensive context with:
+- Complete code examples for all critical components
+- Specific gotchas documented with solutions
+- Existing patterns identified and referenced
+- Step-by-step task ordering with dependencies
+- Validation gates at each level
+- Production-ready error handling patterns
+
+The implementing agent has everything needed for successful one-pass implementation.

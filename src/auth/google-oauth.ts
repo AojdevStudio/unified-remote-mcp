@@ -55,7 +55,7 @@ export class GoogleOAuthHandler {
       }),
     });
 
-    const data = await response.json();
+    const data = await response.json() as any;
     
     if (!response.ok) {
       throw new Error(`Token exchange failed: ${JSON.stringify(data)}`);
@@ -92,7 +92,7 @@ export class GoogleOAuthHandler {
       }),
     });
 
-    const data = await response.json();
+    const data = await response.json() as any;
     
     if (!response.ok) {
       throw new Error(`Token refresh failed: ${JSON.stringify(data)}`);
@@ -122,13 +122,13 @@ export class GoogleOAuthHandler {
       },
     });
 
-    const data = await response.json();
+    const data = await response.json() as any;
     
     if (!response.ok) {
       throw new Error(`Failed to get user info: ${JSON.stringify(data)}`);
     }
 
-    return data;
+    return data as GoogleUserInfo;
   }
 
   /**

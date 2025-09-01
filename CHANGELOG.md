@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+
+## [0.0.1] - 2025-08-23
+
+### Changed
+
+- 🔧 config: update gitignore to exclude cache files and session data
+- Update package and wrangler configurations: rename project to 'unified-remote-mcp', update 'wrangler' and other dependencies to latest versions, and improve formatting in 'wrangler.jsonc'.
+- source repo import
+
 ## [0.2.0] - 2025-08-22
 
 ### Added
@@ -28,5 +37,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial commit
 
 ## Links
-[Unreleased]: https://github.com/org/repo/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/org/repo/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/org/repo/releases/tag/v0.0.1
 [0.2.0]: https://github.com/org/repo/releases/tag/v0.2.0

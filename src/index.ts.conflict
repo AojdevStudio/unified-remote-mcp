@@ -4,19 +4,221 @@ import { z } from "zod";
 import { GoogleOAuthHandler } from "./auth/google-oauth.js";
 import { TokenManager } from "./auth/token-manager.js";
 import { GoogleApiClient } from "./lib/google-client.js";
-import { GoogleDriveAPI, type DriveFile } from "./lib/google-drive-api.js";
 import type { AuthenticatedUser, AuthState } from "./types/auth.js";
 
-// Define our MCP agent with Google OAuth2 authentication and Drive tools
+<<<<<<< Updated upstream
+// Define our MCP agent with Google OAuth2 authentication
 export class MyMCP extends McpAgent {
 	server = new McpServer({
-		name: "UnifiedMCP - Google Workspace with OAuth",
-		version: "3.0.0",
+		name: "Unified Remote MCP with Google OAuth",
+		version: "2.0.0",
 	});
+=======
+// Google Workspace API types
+interface DriveFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  size?: string;
+  createdTime?: string;
+  modifiedTime?: string;
+  webViewLink?: string;
+}
+
+// Secure development token handling
+class DevelopmentTokenManager {
+  private token: string;
+  private expiresAt?: Date;
+  
+  constructor() {
+    this.token = this.validateAndGetToken();
+    this.expiresAt = this.parseExpiration();
+  }
+  
+  private validateAndGetToken(): string {
+    const token = process.env.GOOGLE_DEV_TOKEN;
+    
+    if (!token) {
+      throw new Error('GOOGLE_DEV_TOKEN environment variable is required. See README for setup instructions.');
+    }
+    
+    if (token === 'your-dev-token-here') {
+      throw new Error('Please replace GOOGLE_DEV_TOKEN placeholder with actual development token');
+    }
+    
+    if (!token.startsWith('ya29.')) {
+      console.warn('⚠️  Token format may be invalid for Google OAuth2');
+    }
+    
+    // Prevent production use of dev tokens
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Development tokens must not be used in production');
+    }
+    
+    return token;
+  }
+  
+  private parseExpiration(): Date | undefined {
+    const expiresEnv = process.env.GOOGLE_DEV_TOKEN_EXPIRES_AT;
+    return expiresEnv ? new Date(expiresEnv) : undefined;
+  }
+  
+  getToken(): string {
+    if (this.expiresAt && new Date() > this.expiresAt) {
+      throw new Error('Development token expired. Please refresh token and update GOOGLE_DEV_TOKEN_EXPIRES_AT');
+    }
+    
+    return this.token;
+  }
+  
+  async validateToken(): Promise<boolean> {
+    try {
+      const response = await fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${this.token}`);
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+// Google Drive API helper functions
+class GoogleDriveAPI {
+  private tokenManager: DevelopmentTokenManager | null = null;
+  
+  private getTokenManager(): DevelopmentTokenManager {
+    if (!this.tokenManager) {
+      this.tokenManager = new DevelopmentTokenManager();
+    }
+    return this.tokenManager;
+  }
+  
+  private async makeRequest(endpoint: string, options: RequestInit = {}): Promise<Response> {
+    const url = `https://www.googleapis.com/drive/v3${endpoint}`;
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Authorization': `Bearer ${this.getTokenManager().getToken()}`,
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Google Drive API error: ${response.status} ${response.statusText}`);
+    }
+    
+    return response;
+  }
+  
+  async searchFiles(query: string, pageSize: number = 10): Promise<DriveFile[]> {
+    const params = new URLSearchParams({
+      q: query,
+      pageSize: pageSize.toString(),
+      fields: 'files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink)'
+    });
+    
+    const response = await this.makeRequest(`/files?${params}`);
+    const data = await response.json() as { files?: DriveFile[] };
+    return data.files || [];
+  }
+  
+  async getFile(fileId: string): Promise<string> {
+    const response = await this.makeRequest(`/files/${fileId}?alt=media`);
+    return response.text();
+  }
+  
+  async createFile(name: string, content: string, parentId?: string): Promise<DriveFile> {
+    const metadata: any = { name };
+    if (parentId) {
+      metadata.parents = [parentId];
+    }
+    
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('media', new Blob([content], { type: 'text/plain' }));
+    
+    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.getTokenManager().getToken()}`,
+      },
+      body: form,
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to create file: ${response.status} ${response.statusText}`);
+    }
+    
+    return response.json();
+  }
+  
+  async updateFile(fileId: string, content: string): Promise<void> {
+    const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${this.getTokenManager().getToken()}`,
+        'Content-Type': 'text/plain',
+      },
+      body: content,
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to update file: ${response.status} ${response.statusText}`);
+    }
+  }
+  
+  async createFolder(name: string, parentId?: string): Promise<DriveFile> {
+    const metadata: any = {
+      name,
+      mimeType: 'application/vnd.google-apps.folder'
+    };
+    if (parentId) {
+      metadata.parents = [parentId];
+    }
+    
+    const response = await this.makeRequest('/files', {
+      method: 'POST',
+      body: JSON.stringify(metadata),
+    });
+    
+    return response.json();
+  }
+  
+  async shareFile(fileId: string, email: string, role: 'reader' | 'writer' | 'commenter' = 'reader'): Promise<void> {
+    const permission = {
+      type: 'user',
+      role,
+      emailAddress: email
+    };
+    
+    const response = await this.makeRequest(`/files/${fileId}/permissions`, {
+      method: 'POST',
+      body: JSON.stringify(permission),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to share file: ${response.status}`);
+    }
+  }
+  
+  async exportFile(fileId: string, mimeType: string): Promise<string> {
+    const response = await this.makeRequest(`/files/${fileId}/export?mimeType=${encodeURIComponent(mimeType)}`);
+    return response.text();
+  }
+}
+
+// Define our MCP agent with Google Workspace tools
+export class MyMCP extends McpAgent {
+	server = new McpServer({
+		name: "UnifiedMCP - Google Workspace",
+		version: "2.0.0",
+	});  
+
+	private driveAPI = new GoogleDriveAPI();
+>>>>>>> Stashed changes
 
 	private tokenManager?: TokenManager;
 	private googleClient?: GoogleApiClient;
-	private driveAPI?: GoogleDriveAPI;
 
 	// Initialize authentication components
 	initAuth(env: Env) {
@@ -27,11 +229,214 @@ export class MyMCP extends McpAgent {
 		);
 		this.tokenManager = new TokenManager(env.TOKENS_KV, oauthHandler);
 		this.googleClient = new GoogleApiClient(this.tokenManager);
-		this.driveAPI = new GoogleDriveAPI(this.googleClient);
 	}
 
 	async init() {
-		// Authentication status tool
+<<<<<<< Updated upstream
+		// Existing calculator tools (preserved for backward compatibility)
+		this.server.tool("add", a: z.number(), b: z.number() , async (a, b ) => (
+			content: [type: "text", text: String(a + b) ],));
+
+=======
+		// Google Drive Search and Read Tool
+>>>>>>> Stashed changes
+		this.server.tool(
+			"gdrive_search_and_read", 
+				query: z.string().describe("Search query for Google Drive files"),
+				read_content: z.boolean().optional().describe("Whether to read file contents"),
+				max_results: z.number().optional().describe("Maximum number of results (default: 10)"),
+			async (query, read_content = false, max_results = 10 ) => 
+				try {
+					const files = await this.driveAPI.searchFiles(query, max_results);
+					
+					let result = `Found ${files.length} files matching "${query}":\n\n`;
+					
+					for (const file of files) {
+						result += `📄 **${file.name}** (${file.mimeType})\n`;
+						result += `   ID: ${file.id}\n`;
+						if (file.size) result += `   Size: ${file.size} bytes\n`;
+						if (file.modifiedTime) result += `   Modified: ${file.modifiedTime}\n`;
+						if (file.webViewLink) result += `   Link: ${file.webViewLink}\n`;
+						
+						if (read_content && file.mimeType.startsWith('text/')) {
+							try {
+								const content = await this.driveAPI.getFile(file.id);
+								result += `   Content Preview: ${content.substring(0, 200)}${content.length > 200 ? '...' : ''}\n`;
+							} catch (error) {
+								result += `   Content: Unable to read (${error instanceof Error ? error.message : 'Unknown error'})\n`;
+							}
+						}
+						result += '\n';
+					}
+					
+					return { content: [{ type: "text", text: result }] };
+				} catch (error) {
+					return {
+						content: [{ type: "text", text: `Error searching Google Drive: ${error instanceof Error ? error.message : 'Unknown error'}` }]
+					};
+				}
+		);
+
+		// Google Drive Create Content Tool
+		this.server.tool(
+			"gdrive_create_content",
+			{
+				name: z.string().describe("Name for the new file"),
+				content: z.string().describe("Content of the file"),
+				parent_folder_id: z.string().optional().describe("Parent folder ID (optional)")
+			},
+			async ({ name, content, parent_folder_id }) => {
+				try {
+					const file = await this.driveAPI.createFile(name, content, parent_folder_id);
+					return {
+						content: [{ type: "text", text: `✅ Created file "${file.name}" with ID: ${file.id}\nView: ${file.webViewLink || 'Link not available'}` }]
+					};
+				} catch (error) {
+					return {
+						content: [{ type: "text", text: `Error creating file: ${error instanceof Error ? error.message : 'Unknown error'}` }]
+					};
+				}
+			}
+		);
+
+		// Google Drive Update Content Tool
+		this.server.tool(
+			"gdrive_update_content",
+			{
+				file_id: z.string().describe("ID of the file to update"),
+				content: z.string().describe("New content for the file")
+			},
+			async ({ file_id, content }) => {
+				try {
+					await this.driveAPI.updateFile(file_id, content);
+					return {
+						content: [{ type: "text", text: `✅ Updated file ${file_id} successfully` }]
+					};
+				} catch (error) {
+					return {
+						content: [{ type: "text", text: `Error updating file: ${error instanceof Error ? error.message : 'Unknown error'}` }]
+					};
+				}
+			}
+		);
+
+		// Google Drive Manage Folders Tool
+		this.server.tool(
+			"gdrive_manage_folders",
+			{
+				action: z.enum(["create", "list"]).describe("Action to perform"),
+				folder_name: z.string().optional().describe("Name for new folder (required for create)"),
+				parent_folder_id: z.string().optional().describe("Parent folder ID (optional)")
+			},
+			async ({ action, folder_name, parent_folder_id }) => {
+				try {
+					if (action === "create") {
+						if (!folder_name) {
+							return {
+								content: [{ type: "text", text: "Error: folder_name is required for create action" }]
+							};
+						}
+						const folder = await this.driveAPI.createFolder(folder_name, parent_folder_id);
+						return {
+							content: [{ type: "text", text: `📁 Created folder "${folder.name}" with ID: ${folder.id}` }]
+						};
+					} else if (action === "list") {
+						const folders = await this.driveAPI.searchFiles("mimeType='application/vnd.google-apps.folder'", 50);
+						let result = `📁 Found ${folders.length} folders:\n\n`;
+						for (const folder of folders) {
+							result += `📁 **${folder.name}** (ID: ${folder.id})\n`;
+							if (folder.modifiedTime) result += `   Modified: ${folder.modifiedTime}\n`;
+						}
+						return {
+							content: [{ type: "text", text: result }]
+						};
+					}
+					
+					return {
+						content: [{ type: "text", text: "Error: Invalid action specified" }]
+					};
+				} catch (error) {
+					return {
+						content: [{ type: "text", text: `Error managing folders: ${error instanceof Error ? error.message : 'Unknown error'}` }]
+					};
+				}
+			}
+		);
+
+		// Google Drive Share Permissions Tool  
+		this.server.tool(
+			"gdrive_share_permissions",
+			{
+				file_id: z.string().describe("ID of the file to share"),
+				email: z.string().describe("Email address to share with"),
+				role: z.enum(["reader", "writer", "commenter"]).optional().describe("Permission role (default: reader)")
+			},
+			async ({ file_id, email, role = "reader" }) => {
+				try {
+					await this.driveAPI.shareFile(file_id, email, role);
+					return {
+						content: [{ type: "text", text: `✅ Shared file ${file_id} with ${email} as ${role}` }]
+					};
+				} catch (error) {
+					return {
+						content: [{ type: "text", text: `Error sharing file: ${error instanceof Error ? error.message : 'Unknown error'}` }]
+					};
+				}
+			}
+		);
+
+		// Google Drive Export Convert Tool
+		this.server.tool(
+			"gdrive_export_convert",
+			{
+				file_id: z.string().describe("ID of the Google Workspace file to export"),
+				format: z.enum(["pdf", "docx", "xlsx", "pptx", "txt", "html", "csv"]).describe("Export format")
+			},
+			async ({ file_id, format }) => {
+				try {
+					// Map format to MIME type
+					const mimeTypes: Record<string, string> = {
+						pdf: 'application/pdf',
+						docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+						xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+						pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+						txt: 'text/plain',
+						html: 'text/html',
+						csv: 'text/csv'
+					};
+					
+					const mimeType = mimeTypes[format];
+					if (!mimeType) {
+						return {
+							content: [{ type: "text", text: `Error: Unsupported format ${format}` }]
+						};
+					}
+					
+					const exportedContent = await this.driveAPI.exportFile(file_id, mimeType);
+					
+					// For text-based formats, show a preview
+					if (format === 'txt' || format === 'html' || format === 'csv') {
+						const preview = exportedContent.length > 1000 
+							? exportedContent.substring(0, 1000) + '...\n[Content truncated]'
+							: exportedContent;
+						
+						return {
+							content: [{ type: "text", text: `✅ Exported file ${file_id} as ${format}:\n\n${preview}` }]
+						};
+					} else {
+						return {
+							content: [{ type: "text", text: `✅ Exported file ${file_id} as ${format}. Binary content (${exportedContent.length} characters).` }]
+						};
+					}
+				} catch (error) {
+					return {
+						content: [{ type: "text", text: `Error exporting file: ${error instanceof Error ? error.message : 'Unknown error'}` }]
+					};
+				}
+			}
+		);
+
+		// New authenticated tools
 		this.server.tool(
 			"auth_status",
 			{},
@@ -62,7 +467,6 @@ export class MyMCP extends McpAgent {
 			}
 		);
 
-		// Google user info tool
 		this.server.tool(
 			"google_user_info",
 			{},
@@ -94,284 +498,6 @@ export class MyMCP extends McpAgent {
 							type: "text", 
 							text: `Failed to get user info: ${error}` 
 						}],
-					};
-				}
-			}
-		);
-
-		// Google Drive Search and Read Tool
-		this.server.tool(
-			"gdrive_search_and_read", 
-			{
-				query: z.string().describe("Search query for Google Drive files"),
-				read_content: z.boolean().optional().describe("Whether to read file contents"),
-				max_results: z.number().optional().describe("Maximum number of results (default: 10)")
-			},
-			async ({ query, read_content = false, max_results = 10 }, context) => {
-				if (!this.driveAPI) {
-					return {
-						content: [{ type: "text", text: "Google Drive API not initialized" }],
-					};
-				}
-
-				const userId = this.getUserId(context);
-				if (!userId) {
-					return {
-						content: [{ type: "text", text: "Authentication required. Please authenticate first." }],
-					};
-				}
-
-				try {
-					const files = await this.driveAPI.searchFiles(userId, query, max_results);
-					
-					let result = `Found ${files.length} files matching "${query}":\n\n`;
-					
-					for (const file of files) {
-						result += `📄 **${file.name}** (${file.mimeType})\n`;
-						result += `   ID: ${file.id}\n`;
-						if (file.size) result += `   Size: ${file.size} bytes\n`;
-						if (file.modifiedTime) result += `   Modified: ${file.modifiedTime}\n`;
-						if (file.webViewLink) result += `   Link: ${file.webViewLink}\n`;
-						
-						if (read_content && file.mimeType.startsWith('text/')) {
-							try {
-								const content = await this.driveAPI.getFile(userId, file.id);
-								result += `   Content Preview: ${content.substring(0, 200)}${content.length > 200 ? '...' : ''}\n`;
-							} catch (error) {
-								result += `   Content: Unable to read (${error instanceof Error ? error.message : 'Unknown error'})\n`;
-							}
-						}
-						result += '\n';
-					}
-					
-					return { content: [{ type: "text", text: result }] };
-				} catch (error) {
-					return {
-						content: [{ type: "text", text: `Error searching Google Drive: ${error instanceof Error ? error.message : 'Unknown error'}` }]
-					};
-				}
-			}
-		);
-
-		// Google Drive Create Content Tool
-		this.server.tool(
-			"gdrive_create_content",
-			{
-				name: z.string().describe("Name for the new file"),
-				content: z.string().describe("Content of the file"),
-				parent_folder_id: z.string().optional().describe("Parent folder ID (optional)")
-			},
-			async ({ name, content, parent_folder_id }, context) => {
-				if (!this.driveAPI) {
-					return {
-						content: [{ type: "text", text: "Google Drive API not initialized" }],
-					};
-				}
-
-				const userId = this.getUserId(context);
-				if (!userId) {
-					return {
-						content: [{ type: "text", text: "Authentication required. Please authenticate first." }],
-					};
-				}
-
-				try {
-					const file = await this.driveAPI.createFile(userId, name, content, parent_folder_id);
-					return {
-						content: [{ type: "text", text: `✅ Created file "${file.name}" with ID: ${file.id}\nView: ${file.webViewLink || 'Link not available'}` }]
-					};
-				} catch (error) {
-					return {
-						content: [{ type: "text", text: `Error creating file: ${error instanceof Error ? error.message : 'Unknown error'}` }]
-					};
-				}
-			}
-		);
-
-		// Google Drive Update Content Tool
-		this.server.tool(
-			"gdrive_update_content",
-			{
-				file_id: z.string().describe("ID of the file to update"),
-				content: z.string().describe("New content for the file")
-			},
-			async ({ file_id, content }, context) => {
-				if (!this.driveAPI) {
-					return {
-						content: [{ type: "text", text: "Google Drive API not initialized" }],
-					};
-				}
-
-				const userId = this.getUserId(context);
-				if (!userId) {
-					return {
-						content: [{ type: "text", text: "Authentication required. Please authenticate first." }],
-					};
-				}
-
-				try {
-					await this.driveAPI.updateFile(userId, file_id, content);
-					return {
-						content: [{ type: "text", text: `✅ Updated file ${file_id} successfully` }]
-					};
-				} catch (error) {
-					return {
-						content: [{ type: "text", text: `Error updating file: ${error instanceof Error ? error.message : 'Unknown error'}` }]
-					};
-				}
-			}
-		);
-
-		// Google Drive Manage Folders Tool
-		this.server.tool(
-			"gdrive_manage_folders",
-			{
-				action: z.enum(["create", "list"]).describe("Action to perform"),
-				folder_name: z.string().optional().describe("Name for new folder (required for create)"),
-				parent_folder_id: z.string().optional().describe("Parent folder ID (optional)")
-			},
-			async ({ action, folder_name, parent_folder_id }, context) => {
-				if (!this.driveAPI) {
-					return {
-						content: [{ type: "text", text: "Google Drive API not initialized" }],
-					};
-				}
-
-				const userId = this.getUserId(context);
-				if (!userId) {
-					return {
-						content: [{ type: "text", text: "Authentication required. Please authenticate first." }],
-					};
-				}
-
-				try {
-					if (action === "create") {
-						if (!folder_name) {
-							return {
-								content: [{ type: "text", text: "Error: folder_name is required for create action" }]
-							};
-						}
-						const folder = await this.driveAPI.createFolder(userId, folder_name, parent_folder_id);
-						return {
-							content: [{ type: "text", text: `📁 Created folder "${folder.name}" with ID: ${folder.id}` }]
-						};
-					} else if (action === "list") {
-						const folders = await this.driveAPI.searchFiles(userId, "mimeType='application/vnd.google-apps.folder'", 50);
-						let result = `📁 Found ${folders.length} folders:\n\n`;
-						for (const folder of folders) {
-							result += `📁 **${folder.name}** (ID: ${folder.id})\n`;
-							if (folder.modifiedTime) result += `   Modified: ${folder.modifiedTime}\n`;
-						}
-						return {
-							content: [{ type: "text", text: result }]
-						};
-					}
-					
-					return {
-						content: [{ type: "text", text: "Error: Invalid action specified" }]
-					};
-				} catch (error) {
-					return {
-						content: [{ type: "text", text: `Error managing folders: ${error instanceof Error ? error.message : 'Unknown error'}` }]
-					};
-				}
-			}
-		);
-
-		// Google Drive Share Permissions Tool  
-		this.server.tool(
-			"gdrive_share_permissions",
-			{
-				file_id: z.string().describe("ID of the file to share"),
-				email: z.string().describe("Email address to share with"),
-				role: z.enum(["reader", "writer", "commenter"]).optional().describe("Permission role (default: reader)")
-			},
-			async ({ file_id, email, role = "reader" }, context) => {
-				if (!this.driveAPI) {
-					return {
-						content: [{ type: "text", text: "Google Drive API not initialized" }],
-					};
-				}
-
-				const userId = this.getUserId(context);
-				if (!userId) {
-					return {
-						content: [{ type: "text", text: "Authentication required. Please authenticate first." }],
-					};
-				}
-
-				try {
-					await this.driveAPI.shareFile(userId, file_id, email, role);
-					return {
-						content: [{ type: "text", text: `✅ Shared file ${file_id} with ${email} as ${role}` }]
-					};
-				} catch (error) {
-					return {
-						content: [{ type: "text", text: `Error sharing file: ${error instanceof Error ? error.message : 'Unknown error'}` }]
-					};
-				}
-			}
-		);
-
-		// Google Drive Export Convert Tool
-		this.server.tool(
-			"gdrive_export_convert",
-			{
-				file_id: z.string().describe("ID of the Google Workspace file to export"),
-				format: z.enum(["pdf", "docx", "xlsx", "pptx", "txt", "html", "csv"]).describe("Export format")
-			},
-			async ({ file_id, format }, context) => {
-				if (!this.driveAPI) {
-					return {
-						content: [{ type: "text", text: "Google Drive API not initialized" }],
-					};
-				}
-
-				const userId = this.getUserId(context);
-				if (!userId) {
-					return {
-						content: [{ type: "text", text: "Authentication required. Please authenticate first." }],
-					};
-				}
-
-				try {
-					// Map format to MIME type
-					const mimeTypes: Record<string, string> = {
-						pdf: 'application/pdf',
-						docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-						xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-						pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-						txt: 'text/plain',
-						html: 'text/html',
-						csv: 'text/csv'
-					};
-					
-					const mimeType = mimeTypes[format];
-					if (!mimeType) {
-						return {
-							content: [{ type: "text", text: `Error: Unsupported format ${format}` }]
-						};
-					}
-					
-					const exportedContent = await this.driveAPI.exportFile(userId, file_id, mimeType);
-					
-					// For text-based formats, show a preview
-					if (format === 'txt' || format === 'html' || format === 'csv') {
-						const preview = exportedContent.length > 1000 
-							? exportedContent.substring(0, 1000) + '...\n[Content truncated]'
-							: exportedContent;
-						
-						return {
-							content: [{ type: "text", text: `✅ Exported file ${file_id} as ${format}:\n\n${preview}` }]
-						};
-					} else {
-						return {
-							content: [{ type: "text", text: `✅ Exported file ${file_id} as ${format}. Binary content (${exportedContent.length} characters).` }]
-						};
-					}
-				} catch (error) {
-					return {
-						content: [{ type: "text", text: `Error exporting file: ${error instanceof Error ? error.message : 'Unknown error'}` }]
 					};
 				}
 			}
@@ -501,6 +627,10 @@ export default {
 	fetch(request: Request, env: Env, ctx: ExecutionContext) {
 		const url = new URL(request.url);
 
+		// Initialize MCP server with authentication
+		const mcpServer = new MyMCP();
+		mcpServer.initAuth(env);
+
 		// OAuth endpoints
 		if (url.pathname === "/authorize") {
 			return handleAuthorize(request, env);
@@ -523,8 +653,8 @@ export default {
 		if (url.pathname === "/health") {
 			return new Response(JSON.stringify({
 				status: "healthy",
-				version: "3.0.0",
-				features: ["google-oauth", "google-drive-tools", "mcp-protocol"]
+				version: "2.0.0",
+				features: ["google-oauth", "mcp-tools"]
 			}), {
 				headers: {
 					'Content-Type': 'application/json',

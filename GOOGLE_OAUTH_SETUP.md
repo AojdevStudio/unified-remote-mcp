@@ -16,7 +16,8 @@ The Google OAuth2 integration has been successfully implemented following the PR
 6. Set **Application type** to **Web application**
 7. Add **Authorized redirect URIs**:
    - `http://localhost:8788/oauth/callback` (for local development)
-   - `https://your-worker.workers.dev/oauth/callback` (for production)
+   - `https://your-worker.workers.dev/oauth/callback` (for production) 
+   // this should be https://unified-remote-mcp.chinyereirondi.workers.dev/ I think. 
 
 ### 2. Environment Configuration
 
