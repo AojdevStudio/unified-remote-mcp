@@ -25,5 +25,15 @@
 	},
 	"observability": {
 		"enabled": true
+	},
+	"kv_namespaces": [
+		{
+			"binding": "TOKENS_KV",
+			"id": "tokens-preview-id",
+			"preview_id": "tokens-preview-id"
+		}
+	],
+	"vars": {
+		"ENVIRONMENT": "development"
 	}
 }
