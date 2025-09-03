@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Props } from "../utils/upstream-utils";
 import { google } from "googleapis";
-import type { Readable } from "stream";
+import type { Readable } from "node:stream";
 
 // Helper function to convert stream to string
 async function streamToString(stream: Readable): Promise<string> {
