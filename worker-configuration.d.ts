@@ -24,6 +24,9 @@ declare namespace Cloudflare {
 		GOOGLE_DEV_TOKEN?: string;
 		GOOGLE_DEV_TOKEN_EXPIRES_AT?: string;
 		NODE_ENV?: string;
+		
+		// Cookie encryption for auth handler
+		COOKIE_ENCRYPTION_KEY?: string;
 	}
 }
 interface Env extends Cloudflare.Env {}
