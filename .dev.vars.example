@@ -11,9 +11,13 @@
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 
+# Cookie encryption key for secure approval storage
+# Generate a random 32+ character string for security
+COOKIE_ENCRYPTION_KEY=your-random-32-char-secret-key-here
+
 # OAuth2 Redirect URI (must match exactly with Google Console)
 # For local development with wrangler dev
-REDIRECT_URI=http://localhost:8788/oauth/callback
+REDIRECT_URI=http://localhost:8787/callback
 
 # =============================================================================
 # SETUP INSTRUCTIONS
@@ -25,7 +29,7 @@ REDIRECT_URI=http://localhost:8788/oauth/callback
 # 4. Enable Google Drive API and Google OAuth2 API
 # 5. Go to Credentials → Create OAuth 2.0 Client ID
 # 6. Choose "Web application"
-# 7. Add authorized redirect URI: http://localhost:8788/oauth/callback
+# 7. Add authorized redirect URI: http://localhost:8787/callback
 # 8. Copy Client ID and Client Secret to this file
 # 9. If app is not published, add your email as a test user
 # 10. Run: wrangler dev
