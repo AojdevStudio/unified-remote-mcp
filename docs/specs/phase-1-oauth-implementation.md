@@ -143,7 +143,7 @@ Each tool will check for valid OAuth tokens:
 ```typescript
 async function executeToolWithAuth(context, toolName, params) {
   const tokens = await getTokensForSession(context.sessionId);
-  
+
   if (!tokens || isExpired(tokens)) {
     return {
       content: [{
@@ -152,7 +152,7 @@ async function executeToolWithAuth(context, toolName, params) {
       }]
     };
   }
-  
+
   // Execute tool with tokens
   return executeGoogleAPICall(tokens, toolName, params);
 }
@@ -219,7 +219,7 @@ wrangler secret put COOKIE_ENCRYPTION_KEY
 ```javascript
 const GOOGLE_SCOPES = [
   "profile",                                    // Basic profile info
-  "email",                                      // User email address  
+  "email",                                      // User email address
   "https://www.googleapis.com/auth/drive",              // Full Google Drive access for all 6 tools
   "https://www.googleapis.com/auth/drive.file",         // Create and manage files
   "https://www.googleapis.com/auth/drive.readonly",     // Read-only access for search operations

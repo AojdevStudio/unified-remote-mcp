@@ -18,19 +18,56 @@ export class MyMCP extends McpAgent {
 	private googleClient?: GoogleApiClient;
 	private driveAPI?: GoogleDriveAPI;
 
-	// Initialize authentication components
-	initAuth(env: Env) {
-		const oauthHandler = new GoogleOAuthHandler(
-			env.GOOGLE_CLIENT_ID,
-			env.GOOGLE_CLIENT_SECRET,
-			env.REDIRECT_URI || 'http://localhost:8788/oauth/callback'
-		);
-		this.tokenManager = new TokenManager(env.TOKENS_KV, oauthHandler);
-		this.googleClient = new GoogleApiClient(this.tokenManager);
-		this.driveAPI = new GoogleDriveAPI(this.googleClient);
+	// Initialize authentication components with environment
+	async setupAuth(env: Env) {
+		if (!this.tokenManager && env && env.GOOGLE_CLIENT_ID) {
+			const oauthHandler = new GoogleOAuthHandler(
+				env.GOOGLE_CLIENT_ID,
+				env.GOOGLE_CLIENT_SECRET,
+				env.REDIRECT_URI || 'http://localhost:8788/oauth/callback'
+			);
+			this.tokenManager = new TokenManager(env.TOKENS_KV, oauthHandler);
+			this.googleClient = new GoogleApiClient(this.tokenManager);
+			this.driveAPI = new GoogleDriveAPI(this.googleClient);
+		}
 	}
 
 	async init() {
+		// Existing calculator tools (preserved for backward compatibility)
+		this.server.tool(
+			"add",
+			{
+				a: z.number().describe("First number"),
+				b: z.number().describe("Second number")
+			},
+			async ({ a, b }) => {
+				return {
+					content: [{ type: "text", text: String(a + b) }],
+				};
+			}
+		);
+
+		this.server.tool(
+			"calculate",
+			{
+				expression: z.string().describe("Mathematical expression to evaluate (e.g., '2 + 3 * 4')")
+			},
+			async ({ expression }) => {
+				try {
+					// Simple safe evaluation for basic arithmetic
+					const sanitized = expression.replace(/[^0-9+\-*/().\s]/g, '');
+					const result = Function(`"use strict"; return (${sanitized})`)();
+					return {
+						content: [{ type: "text", text: String(result) }],
+					};
+				} catch (error) {
+					return {
+						content: [{ type: "text", text: `Error evaluating expression: ${error}` }],
+					};
+				}
+			}
+		);
+
 		// Authentication status tool
 		this.server.tool(
 			"auth_status",
@@ -376,6 +413,16 @@ export class MyMCP extends McpAgent {
 				}
 			}
 		);
+	}
+
+	// Override fetch to ensure authentication is initialized
+	async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+		try {
+			await this.setupAuth(env);
+		} catch (error) {
+			console.warn('Auth setup failed, continuing without OAuth:', error);
+		}
+		return super.fetch(request, env, ctx);
 	}
 
 	// Extract user ID from MCP context (simplified for now)

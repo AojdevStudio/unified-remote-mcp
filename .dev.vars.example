@@ -1,0 +1,37 @@
+# Cloudflare Workers Local Development Variables
+# Copy this file to .dev.vars and fill in your actual Google OAuth2 credentials
+# This file is used by `wrangler dev` for local development
+
+# =============================================================================
+# GOOGLE OAUTH2 CONFIGURATION (REQUIRED)
+# =============================================================================
+
+# Google OAuth2 Client Credentials from Google Cloud Console
+# Get these from: https://console.cloud.google.com/apis/credentials
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# OAuth2 Redirect URI (must match exactly with Google Console)
+# For local development with wrangler dev
+REDIRECT_URI=http://localhost:8788/oauth/callback
+
+# =============================================================================
+# SETUP INSTRUCTIONS
+# =============================================================================
+
+# 1. Copy this file: cp .dev.vars.example .dev.vars
+# 2. Go to Google Cloud Console: https://console.cloud.google.com
+# 3. Create a new project or select existing project
+# 4. Enable Google Drive API and Google OAuth2 API
+# 5. Go to Credentials → Create OAuth 2.0 Client ID
+# 6. Choose "Web application"
+# 7. Add authorized redirect URI: http://localhost:8788/oauth/callback
+# 8. Copy Client ID and Client Secret to this file
+# 9. If app is not published, add your email as a test user
+# 10. Run: wrangler dev
+
+# Security Notes:
+# - This file is automatically ignored by git (.gitignore)
+# - Never share these credentials
+# - Client ID is not sensitive (visible in browser), but Client Secret is
+# - For production, set these as Cloudflare Workers environment variables
