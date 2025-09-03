@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Props } from "../utils/upstream-utils";
-import { google, type drive_v3 } from "googleapis";
+import { google, drive_v3 } from "googleapis";
 
 /**
  * Registers Google Drive file management tool with the MCP server
