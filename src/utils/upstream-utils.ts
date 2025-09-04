@@ -37,6 +37,9 @@ export function getUpstreamAuthorizeUrl({
   upstream.searchParams.set("scope", scope);
   if (state) upstream.searchParams.set("state", state);
   upstream.searchParams.set("response_type", "code");
+  // Ensure Google returns refresh_token reliably
+  upstream.searchParams.set("access_type", "offline");
+  upstream.searchParams.set("prompt", "consent");
   return upstream.href;
 }
 
@@ -104,3 +107,34 @@ export type Props = {
   refreshToken?: string; // Optional refresh token
   expiresIn?: number; // Optional expiration time in seconds
 };
+
+/**
+ * Refresh Google access token using a refresh token
+ */
+export async function refreshGoogleAccessToken({
+  client_id,
+  client_secret,
+  refresh_token,
+  upstream_url = "https://oauth2.googleapis.com/token",
+}: {
+  client_id: string;
+  client_secret: string;
+  refresh_token: string;
+  upstream_url?: string;
+}): Promise<GoogleOAuthTokenResponse> {
+  const resp = await fetch(upstream_url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id,
+      client_secret,
+      refresh_token,
+      grant_type: "refresh_token",
+    }).toString(),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`Failed to refresh token: ${resp.status} ${text}`);
+  }
+  return (await resp.json()) as GoogleOAuthTokenResponse;
+}

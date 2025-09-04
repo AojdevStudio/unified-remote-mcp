@@ -49,4 +49,18 @@ export function registerAuthTools(server: McpServer, props?: Props) {
       };
     }
   );
+
+  // Provide a way to restart OAuth manually
+  server.tool(
+    "auth_restart",
+    {},
+    async () => {
+      return {
+        content: [{
+          type: "text",
+          text: "Open /authorize in your browser to restart Google OAuth with offline access."
+        }],
+      };
+    }
+  );
 }

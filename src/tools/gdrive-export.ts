@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { Props } from "../utils/upstream-utils";
 import { google, drive_v3 } from "googleapis";
 import { readBodyToText } from "../utils/stream-utils";
+import { refreshGoogleAccessToken } from "../utils/upstream-utils";
+import { env } from "cloudflare:workers";
 
 // Uses runtime-agnostic reader from utils
 
@@ -15,7 +17,7 @@ export function registerGoogleDriveExportTool(server: McpServer, props?: Props) 
   // Authentication Setup - Creates OAuth2 client using access token
   const getDriveClient = () => {
     const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: props?.accessToken });
+    auth.setCredentials({ access_token: props?.accessToken, refresh_token: props?.refreshToken });
     return google.drive({ version: "v3", auth });
   };
 
@@ -106,11 +108,42 @@ export function registerGoogleDriveExportTool(server: McpServer, props?: Props) 
         const exportMimeType = supportedFormats[export_format];
 
         // Export Processing: Convert file to requested format
-        const exportResponse = await drive.files.export(
-          { fileId: file_id, mimeType: exportMimeType },
-          { responseType: "stream" }
-        );
-        const exportedContent = await readBodyToText(exportResponse.data);
+        const attempt = async () => {
+          const exportResponse = await drive.files.export(
+            { fileId: file_id, mimeType: exportMimeType },
+            { responseType: "stream" }
+          );
+          return readBodyToText(exportResponse.data);
+        };
+        let exportedContent: string;
+        try {
+          exportedContent = await attempt();
+        } catch (err: any) {
+          const status = err?.code ?? err?.response?.status;
+          const msg = String(err?.message || err);
+          const canRefresh = props?.refreshToken && (status === 401 || /invalid(_|\s)?(token|grant|credentials)/i.test(msg));
+          if (canRefresh) {
+            const refreshed = await refreshGoogleAccessToken({
+              client_id: env.GOOGLE_OAUTH_CLIENT_ID,
+              client_secret: env.GOOGLE_OAUTH_CLIENT_SECRET,
+              refresh_token: props!.refreshToken!,
+            });
+            props!.accessToken = refreshed.access_token;
+            if (refreshed.refresh_token) props!.refreshToken = refreshed.refresh_token;
+            const driveRetry = (() => {
+              const auth = new google.auth.OAuth2();
+              auth.setCredentials({ access_token: props!.accessToken });
+              return google.drive({ version: "v3", auth });
+            })();
+            const resp2 = await driveRetry.files.export(
+              { fileId: file_id, mimeType: exportMimeType },
+              { responseType: "stream" }
+            );
+            exportedContent = await readBodyToText(resp2.data);
+          } else {
+            throw err;
+          }
+        }
 
         let result = `✅ Exported '${name}' from ${mimeType} to ${export_format.toUpperCase()}\\n`;
         result += `Original File ID: ${file_id}\\n`;
