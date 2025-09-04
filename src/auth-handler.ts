@@ -7,7 +7,7 @@ import { env } from "cloudflare:workers";
 import {
   fetchUpstreamAuthToken,
   getUpstreamAuthorizeUrl,
-  type Props,
+  Props,
 } from "./utils/upstream-utils";
 import {
   clientIdAlreadyApproved,
@@ -84,7 +84,7 @@ app.post("/authorize", async (c) => {
   // Validates form submission, extracts state, and generates Set-Cookie headers to skip approval dialog next time
   const { state, headers } = await parseRedirectApproval(
     c.req.raw,
-    c.env.COOKIE_ENCRYPTION_KEY || "default-cookie-key"
+    env.COOKIE_ENCRYPTION_KEY || "default-cookie-key"
   );
   if (!state.oauthReqInfo) {
     return c.text("Invalid request", 400);

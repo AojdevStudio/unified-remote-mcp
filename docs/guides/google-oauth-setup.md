@@ -15,8 +15,8 @@ The Google OAuth2 integration has been successfully implemented following the PR
 5. Configure the OAuth consent screen if not already done
 6. Set **Application type** to **Web application**
 7. Add **Authorized redirect URIs**:
-   - `http://localhost:8788/oauth/callback` (for local development)
-   - `https://unified-remote-mcp.chinyereirondi.workers.dev/oauth/callback` (for production) 
+   - `http://localhost:8788/callback` (for local development)
+   - `https://unified-remote-mcp.chinyereirondi.workers.dev/callback` (for production) 
 
 ### 2. Environment Configuration
 
@@ -26,7 +26,7 @@ Update your `.dev.vars` file with the credentials from Google Console:
 # Replace with your actual Google OAuth2 credentials
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
-REDIRECT_URI=http://localhost:8788/oauth/callback
+REDIRECT_URI=http://localhost:8788/callback
 ```
 
 ### 3. Cloudflare KV Setup

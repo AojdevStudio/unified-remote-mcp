@@ -306,7 +306,7 @@ Find your Claude Desktop config:
       "command": "npx",
       "args": [
         "mcp-remote",
-        "https://unified-remote-mcp.YOUR-USERNAME.workers.dev/sse"
+        "https://unified-remote-mcp.chinyereirondi.workers.dev/sse"
       ]
     }
   }
