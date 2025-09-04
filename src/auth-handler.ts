@@ -7,7 +7,7 @@ import { env } from "cloudflare:workers";
 import {
   fetchUpstreamAuthToken,
   getUpstreamAuthorizeUrl,
-  Props,
+  type Props,
 } from "./utils/upstream-utils";
 import {
   clientIdAlreadyApproved,
@@ -45,7 +45,7 @@ async function redirectToGoogle(
       location: getUpstreamAuthorizeUrl({
         upstream_url: "https://accounts.google.com/o/oauth2/v2/auth",
         scope: scopes,
-        client_id: env.GOOGLE_CLIENT_ID,
+        client_id: env.GOOGLE_OAUTH_CLIENT_ID,
         redirect_uri: new URL("/callback", request.url).href,
         state: btoa(JSON.stringify(oauthReqInfo)),
       }),
@@ -108,8 +108,8 @@ app.get("/callback", async (c) => {
   }
   const [googleAuthTokenResponse, errResponse] = await fetchUpstreamAuthToken({
     upstream_url: "https://oauth2.googleapis.com/token",
-    client_id: c.env.GOOGLE_CLIENT_ID,
-    client_secret: c.env.GOOGLE_CLIENT_SECRET,
+    client_id: c.env.GOOGLE_OAUTH_CLIENT_ID,
+    client_secret: c.env.GOOGLE_OAUTH_CLIENT_SECRET,
     code,
     redirect_uri: new URL("/callback", c.req.url).href,
   });
