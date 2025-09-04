@@ -2,17 +2,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Props } from "../utils/upstream-utils";
 import { google, drive_v3 } from "googleapis";
-import { Readable } from "stream";
+import { readBodyToText } from "../utils/stream-utils";
 
-// Helper function to convert stream to string
-async function streamToString(stream: Readable): Promise<string> {
-  const chunks: Buffer[] = [];
-  return new Promise((resolve, reject) => {
-    stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-    stream.on("error", (err) => reject(err));
-    stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-  });
-}
+// Uses runtime-agnostic reader from utils
 
 /**
  * Registers Google Drive export and conversion tool with the MCP server
@@ -118,8 +110,7 @@ export function registerGoogleDriveExportTool(server: McpServer, props?: Props) 
           { fileId: file_id, mimeType: exportMimeType },
           { responseType: "stream" }
         );
-
-        const exportedContent = await streamToString(exportResponse.data as Readable);
+        const exportedContent = await readBodyToText(exportResponse.data);
 
         let result = `✅ Exported '${name}' from ${mimeType} to ${export_format.toUpperCase()}\\n`;
         result += `Original File ID: ${file_id}\\n`;

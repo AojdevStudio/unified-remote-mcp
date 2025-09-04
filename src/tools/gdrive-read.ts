@@ -2,17 +2,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Props } from "../utils/upstream-utils";
 import { google, drive_v3 } from "googleapis";
-import { Readable } from "stream";
+import { readBodyToText } from "../utils/stream-utils";
 
-// Helper function to convert stream to string
-async function streamToString(stream: Readable): Promise<string> {
-  const chunks: Buffer[] = [];
-  return new Promise((resolve, reject) => {
-    stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-    stream.on("error", (err) => reject(err));
-    stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-  });
-}
+// Uses runtime-agnostic reader from utils
 
 /**
  * Registers Google Drive content reading tool with the MCP server
@@ -74,7 +66,7 @@ export function registerGoogleDriveReadTool(server: McpServer, props?: Props) {
             { fileId: file_id, alt: "media" },
             { responseType: "stream" }
           );
-          content = await streamToString(response.data as Readable);
+          content = await readBodyToText(response.data);
         }
         // Handle Google Docs/Sheets with export functionality
         else if (mimeType === "application/vnd.google-apps.document" ||
@@ -87,7 +79,7 @@ export function registerGoogleDriveReadTool(server: McpServer, props?: Props) {
             { fileId: file_id, mimeType: exportMimeType },
             { responseType: "stream" }
           );
-          content = await streamToString(response.data as Readable);
+          content = await readBodyToText(response.data);
         }
         // Handle other file types
         else {
