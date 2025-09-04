@@ -18,12 +18,34 @@ export function registerAuthTools(server: McpServer, props?: Props) {
         };
       }
 
-      return {
-        content: [{ 
-          type: "text", 
-          text: `✅ Authenticated as: ${props.name} (${props.email})\nUser ID: ${props.sub}` 
-        }],
-      };
+      let authorizeUrl = "/authorize";
+      let logoutUrl = "/logout";
+      try {
+        const redirect = env.REDIRECT_URI;
+        if (redirect) {
+          const u = new URL(redirect);
+          authorizeUrl = `${u.origin}/authorize`;
+          logoutUrl = `${u.origin}/logout`;
+        }
+      } catch {}
+
+      const hasRefresh = Boolean(props.refreshToken);
+      const expiryHint = typeof props.expiresIn === "number" && props.expiresIn > 0
+        ? `~${Math.round(props.expiresIn / 60)} min from issuance`
+        : "unknown";
+
+      const lines = [
+        `✅ Authenticated as: ${props.name} (${props.email})`,
+        `User ID: ${props.sub}`,
+        `Refresh token: ${hasRefresh ? "present" : "missing (re-auth recommended)"}`,
+        `Access token expiry: ${expiryHint}`,
+        hasRefresh
+          ? "Tokens should auto-refresh on expiry."
+          : `To enable auto-refresh, visit: ${authorizeUrl}`,
+        `To clear approval cookies: ${logoutUrl}`,
+      ];
+
+      return { content: [{ type: "text", text: lines.join("\n") }] };
     }
   );
 
@@ -76,6 +98,67 @@ export function registerAuthTools(server: McpServer, props?: Props) {
       return {
         content: [{ type: "text", text: message }],
       };
+    }
+  );
+
+  // Disconnect: revoke tokens with Google and provide re-auth/logout links
+  server.tool(
+    "auth_disconnect",
+    {},
+    async () => {
+      if (!props) {
+        return {
+          content: [{ type: "text", text: "Not authenticated. Nothing to disconnect." }],
+        };
+      }
+
+      const results: string[] = [];
+      const revoke = async (token: string, label: string) => {
+        try {
+          const resp = await fetch("https://oauth2.googleapis.com/revoke", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ token }).toString(),
+          });
+          if (resp.ok) {
+            results.push(`Revoked ${label}`);
+          } else {
+            const text = await resp.text().catch(() => "");
+            results.push(`Failed to revoke ${label}: ${resp.status} ${text}`);
+          }
+        } catch (e) {
+          results.push(`Error revoking ${label}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      };
+
+      if (props.refreshToken) {
+        await revoke(props.refreshToken, "refresh token");
+      } else {
+        results.push("No refresh token present");
+      }
+      if (props.accessToken) {
+        await revoke(props.accessToken, "access token");
+      }
+
+      let authorizeUrl = "/authorize";
+      let logoutUrl = "/logout";
+      try {
+        const redirect = env.REDIRECT_URI;
+        if (redirect) {
+          const u = new URL(redirect);
+          authorizeUrl = `${u.origin}/authorize`;
+          logoutUrl = `${u.origin}/logout`;
+        }
+      } catch {}
+
+      const message = [
+        ...results,
+        `Next steps:`,
+        `- Clear approval cookie: ${logoutUrl}`,
+        `- Reconnect account: ${authorizeUrl}`,
+      ].join("\n");
+
+      return { content: [{ type: "text", text: message }] };
     }
   );
 }

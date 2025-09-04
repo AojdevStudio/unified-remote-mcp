@@ -28,6 +28,29 @@ interface GoogleUserInfo {
 
 const app = new Hono<{ Bindings: Env & { OAUTH_PROVIDER: OAuthHelpers } }>();
 
+// Expose protected resource metadata to satisfy discovery by some clients
+app.get("/.well-known/oauth-protected-resource", (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.json({
+    resource: origin,
+    authorization_servers: [
+      `${origin}/.well-known/oauth-authorization-server`,
+    ],
+  });
+});
+
+app.get("/.well-known/oauth-protected-resource/:res", (c) => {
+  const origin = new URL(c.req.url).origin;
+  const res = c.req.param("res");
+  const resource = `${origin}/${res}`;
+  return c.json({
+    resource,
+    authorization_servers: [
+      `${origin}/.well-known/oauth-authorization-server`,
+    ],
+  });
+});
+
 async function redirectToGoogle(
   request: Request,
   oauthReqInfo: AuthRequest,
@@ -146,6 +169,21 @@ app.get("/callback", async (c) => {
     } as Props,
   });
   return Response.redirect(redirectTo);
+});
+
+// Logout route: clear approval cookie so consent is prompted next time
+app.get("/logout", async (c) => {
+  const origin = new URL(c.req.url).origin;
+  const headers: Record<string, string> = {
+    "Set-Cookie": `mcp-approved-clients=; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
+  };
+  return new Response(null, {
+    status: 302,
+    headers: {
+      ...headers,
+      location: `${origin}/authorize`,
+    },
+  });
 });
 
 export { app as GoogleHandler };
