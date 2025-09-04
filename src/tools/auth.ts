@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Props } from "../utils/upstream-utils";
+import { env } from "cloudflare:workers";
 
 /**
  * Registers authentication status tools with the MCP server
@@ -55,11 +56,25 @@ export function registerAuthTools(server: McpServer, props?: Props) {
     "auth_restart",
     {},
     async () => {
+      // Derive absolute authorize URL when possible
+      let authorizeUrl = "/authorize";
+      try {
+        const redirect = env.REDIRECT_URI;
+        if (redirect) {
+          const u = new URL(redirect);
+          authorizeUrl = `${u.origin}/authorize`;
+        }
+      } catch {
+        // Fallback to relative path
+      }
+
+      const message = [
+        `Click to restart OAuth: ${authorizeUrl}`,
+        "This link requests offline access so tokens can auto-refresh.",
+      ].join("\n");
+
       return {
-        content: [{
-          type: "text",
-          text: "Open /authorize in your browser to restart Google OAuth with offline access."
-        }],
+        content: [{ type: "text", text: message }],
       };
     }
   );
